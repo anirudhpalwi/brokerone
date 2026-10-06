@@ -1,11 +1,16 @@
 
 
 resource "aws_instance" "brokerone" {
-  ami                         = var.ami_id
-  instance_type               = var.ec2_instance_type
-  subnet_id                   = aws_subnet.public_a.id
-  vpc_security_group_ids      = [aws_security_group.ec2.id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2.name
+  ami                    = var.ami_id
+  instance_type          = var.ec2_instance_type
+  subnet_id              = aws_subnet.public_a.id
+  vpc_security_group_ids = [aws_security_group.ec2.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2.name
+  # Public IP is a documented exception (Scrut: "Instance with a Public IP Address").
+  # There is no NAT gateway, so the instance needs it for outbound access
+  # (dnf/npm, SSM, CodeCommit). Inbound is limited to port 5192 from the ALB SG,
+  # with no SSH. Removing it requires a NAT gateway or VPC endpoints and
+  # replaces the instance.
   associate_public_ip_address = true
 
   root_block_device {

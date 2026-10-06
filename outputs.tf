@@ -38,3 +38,7 @@ output "rds_endpoint" {
 output "db_secret_name" {
   value = aws_secretsmanager_secret.db.name
 }
+
+output "log_bucket_name" {
+  value = aws_s3_bucket.logs.id
+}

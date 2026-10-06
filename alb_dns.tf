@@ -9,9 +9,21 @@ resource "aws_lb" "brokerone" {
     aws_subnet.public_b.id
   ]
 
+  drop_invalid_header_fields = true
+  enable_deletion_protection = true
+
+  access_logs {
+    bucket  = aws_s3_bucket.logs.id
+    prefix  = "alb"
+    enabled = true
+  }
+
   tags = {
     Name = "brokerone-dev-alb"
   }
+
+  # ALB validates write access to the log bucket when logging is enabled.
+  depends_on = [aws_s3_bucket_policy.logs]
 }
 
 resource "aws_lb_target_group" "brokerone" {

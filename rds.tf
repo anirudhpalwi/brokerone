@@ -20,10 +20,10 @@ resource "aws_db_subnet_group" "brokerone" {
 resource "aws_db_instance" "brokerone" {
   identifier = "brokerone-dev"
 
-  engine         = "postgres"
-  engine_version = var.postgres_engine_version
+  engine                      = "postgres"
+  engine_version              = var.postgres_engine_version
   allow_major_version_upgrade = true
-  instance_class = var.db_instance_class
+  instance_class              = var.db_instance_class
 
   allocated_storage     = 20
   max_allocated_storage = 100
@@ -38,9 +38,10 @@ resource "aws_db_instance" "brokerone" {
   db_subnet_group_name   = aws_db_subnet_group.brokerone.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
-  publicly_accessible     = false
+  publicly_accessible = false
+  # Single-AZ is an accepted risk for DEV (Multi-AZ doubles cost).
   multi_az                = false
-  backup_retention_period = 1
+  backup_retention_period = 7
   skip_final_snapshot     = true
   deletion_protection     = false
   apply_immediately       = true
@@ -66,9 +67,8 @@ resource "aws_secretsmanager_secret_version" "db" {
   })
 }
 
-resource "aws_iam_role_policy" "secret_read" {
+resource "aws_iam_policy" "secret_read" {
   name = "brokerone-dev-secret-read"
-  role = aws_iam_role.ec2.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -82,4 +82,9 @@ resource "aws_iam_role_policy" "secret_read" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "secret_read" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = aws_iam_policy.secret_read.arn
 }

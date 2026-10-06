@@ -22,9 +22,11 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_role_policy" "codecommit_read" {
+# Role permissions are customer-managed policies rather than inline policies
+# (Scrut: "IAM role with inline policies").
+
+resource "aws_iam_policy" "codecommit_read" {
   name = "brokerone-dev-codecommit-read"
-  role = aws_iam_role.ec2.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -41,9 +43,13 @@ resource "aws_iam_role_policy" "codecommit_read" {
   })
 }
 
-resource "aws_iam_role_policy" "cloudwatch_logs" {
+resource "aws_iam_role_policy_attachment" "codecommit_read" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = aws_iam_policy.codecommit_read.arn
+}
+
+resource "aws_iam_policy" "cloudwatch_logs" {
   name = "brokerone-dev-cloudwatch-logs"
-  role = aws_iam_role.ec2.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -65,9 +71,13 @@ resource "aws_iam_role_policy" "cloudwatch_logs" {
   })
 }
 
-resource "aws_iam_role_policy" "pipeline_artifacts_read" {
+resource "aws_iam_role_policy_attachment" "cloudwatch_logs" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = aws_iam_policy.cloudwatch_logs.arn
+}
+
+resource "aws_iam_policy" "pipeline_artifacts_read" {
   name = "brokerone-dev-pipeline-artifacts-read"
-  role = aws_iam_role.ec2.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -84,14 +94,18 @@ resource "aws_iam_role_policy" "pipeline_artifacts_read" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "pipeline_artifacts_read" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = aws_iam_policy.pipeline_artifacts_read.arn
+}
+
 resource "aws_iam_instance_profile" "ec2" {
   name = "brokerone-dev-ec2-profile"
   role = aws_iam_role.ec2.name
 }
 
-resource "aws_iam_role_policy" "filestorage_rw" {
+resource "aws_iam_policy" "filestorage_rw" {
   name = "brokerone-dev-filestorage"
-  role = aws_iam_role.ec2.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -100,21 +114,25 @@ resource "aws_iam_role_policy" "filestorage_rw" {
         Sid      = "FileStorageObjects"
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::brokerone-dev-filestorage/*"
+        Resource = "${data.aws_s3_bucket.filestorage.arn}/*"
       },
       {
         Sid      = "FileStorageList"
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
-        Resource = "arn:aws:s3:::brokerone-dev-filestorage"
+        Resource = data.aws_s3_bucket.filestorage.arn
       }
     ]
   })
 }
 
-resource "aws_iam_role_policy" "ses_send" {
+resource "aws_iam_role_policy_attachment" "filestorage_rw" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = aws_iam_policy.filestorage_rw.arn
+}
+
+resource "aws_iam_policy" "ses_send" {
   name = "brokerone-dev-ses-send"
-  role = aws_iam_role.ec2.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -127,4 +145,9 @@ resource "aws_iam_role_policy" "ses_send" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "ses_send" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = aws_iam_policy.ses_send.arn
 }
