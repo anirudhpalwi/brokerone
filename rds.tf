@@ -39,8 +39,8 @@ resource "aws_db_instance" "brokerone" {
   vpc_security_group_ids = [aws_security_group.rds.id]
 
   publicly_accessible = false
-  # Single-AZ is an accepted risk for DEV (Multi-AZ doubles cost).
-  multi_az                = false
+  # Multi-AZ standby in the second AZ (Scrut: "RDS instance single AZ"). Roughly doubles RDS cost.
+  multi_az                = true
   backup_retention_period = 7
   skip_final_snapshot     = true
   deletion_protection     = false

@@ -99,3 +99,166 @@ resource "aws_route_table_association" "db_b" {
   subnet_id      = aws_subnet.db_b.id
   route_table_id = aws_route_table.db.id
 }
+
+# Custom NACLs replace the default allow-all NACL (Scrut: "Network ACLs ...
+# should not allow all ingress/egress traffic"). NACLs are stateless, so every
+# allowed connection also needs a rule for its reply traffic (ports 1024-65535).
+
+# Public subnets: ALB + app EC2.
+resource "aws_network_acl" "public" {
+  vpc_id     = var.vpc_id
+  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+
+  # HTTPS and HTTP from users to the ALB
+  ingress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 443
+    to_port    = 443
+  }
+  ingress {
+    rule_no    = 110
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 80
+    to_port    = 80
+  }
+  # ALB to the app
+  ingress {
+    rule_no    = 120
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_a_cidr
+    from_port  = 5192
+    to_port    = 5192
+  }
+  ingress {
+    rule_no    = 130
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_b_cidr
+    from_port  = 5192
+    to_port    = 5192
+  }
+  # Replies to the EC2's outbound calls (npm, dnf, SSM, S3, SES, CodeCommit) and from RDS
+  ingress {
+    rule_no    = 140
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  # HTTPS and HTTP to AWS services and package sites
+  egress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 443
+    to_port    = 443
+  }
+  egress {
+    rule_no    = 110
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 80
+    to_port    = 80
+  }
+  # ALB to the app
+  egress {
+    rule_no    = 120
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_a_cidr
+    from_port  = 5192
+    to_port    = 5192
+  }
+  egress {
+    rule_no    = 130
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_b_cidr
+    from_port  = 5192
+    to_port    = 5192
+  }
+  # App to RDS
+  egress {
+    rule_no    = 140
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.db_subnet_a_cidr
+    from_port  = 5432
+    to_port    = 5432
+  }
+  egress {
+    rule_no    = 150
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.db_subnet_b_cidr
+    from_port  = 5432
+    to_port    = 5432
+  }
+  # Replies from the ALB to users and from the app to the ALB
+  egress {
+    rule_no    = 160
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  tags = {
+    Name = "brokerone-dev-public-nacl"
+  }
+}
+
+# Database subnets: PostgreSQL in from the app subnets only, replies back to them.
+resource "aws_network_acl" "db" {
+  vpc_id     = var.vpc_id
+  subnet_ids = [aws_subnet.db_a.id, aws_subnet.db_b.id]
+
+  ingress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_a_cidr
+    from_port  = 5432
+    to_port    = 5432
+  }
+  ingress {
+    rule_no    = 110
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_b_cidr
+    from_port  = 5432
+    to_port    = 5432
+  }
+
+  egress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_a_cidr
+    from_port  = 1024
+    to_port    = 65535
+  }
+  egress {
+    rule_no    = 110
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_b_cidr
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  tags = {
+    Name = "brokerone-dev-db-nacl"
+  }
+}

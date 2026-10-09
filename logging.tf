@@ -47,30 +47,9 @@ resource "aws_s3_bucket_versioning" "logs" {
   }
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "logs" {
-  bucket = aws_s3_bucket.logs.id
-
-  rule {
-    id     = "expire-logs"
-    status = "Enabled"
-
-    filter {}
-
-    expiration {
-      days = 90
-    }
-
-    noncurrent_version_expiration {
-      noncurrent_days = 30
-    }
-
-    abort_incomplete_multipart_upload {
-      days_after_initiation = 7
-    }
-  }
-
-  depends_on = [aws_s3_bucket_versioning.logs]
-}
+# No lifecycle rules: AWS does not allow lifecycle configuration on a bucket
+# with MFA Delete (Scrut: "Bucket without MFA Delete"). Logs are kept until
+# removed manually by the root user with MFA.
 
 resource "aws_s3_bucket_policy" "logs" {
   bucket = aws_s3_bucket.logs.id
@@ -154,4 +133,94 @@ resource "aws_flow_log" "vpc" {
   }
 
   depends_on = [aws_s3_bucket_policy.logs]
+}
+
+# Receives server access logs for the main log bucket (Scrut: "S3 bucket
+# logging" on brokerone-dev-logs). No lifecycle rule, so MFA Delete can be
+# enabled on it as well.
+resource "aws_s3_bucket" "logs_access" {
+  bucket = "brokerone-dev-logs-access-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Name = "brokerone-dev-logs-access"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "logs_access" {
+  bucket = aws_s3_bucket.logs_access.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "logs_access" {
+  bucket = aws_s3_bucket.logs_access.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "logs_access" {
+  bucket = aws_s3_bucket.logs_access.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "logs_access" {
+  bucket = aws_s3_bucket.logs_access.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_policy" "logs_access" {
+  bucket = aws_s3_bucket.logs_access.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.logs_access.arn,
+          "${aws_s3_bucket.logs_access.arn}/*"
+        ]
+        Condition = {
+          Bool = { "aws:SecureTransport" = "false" }
+        }
+      },
+      {
+        Sid       = "S3ServerAccessLogs"
+        Effect    = "Allow"
+        Principal = { Service = "logging.s3.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.logs_access.arn}/brokerone-dev-logs/*"
+        Condition = {
+          ArnLike      = { "aws:SourceArn" = aws_s3_bucket.logs.arn }
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        }
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.logs_access]
+}
+
+resource "aws_s3_bucket_logging" "logs" {
+  bucket        = aws_s3_bucket.logs.id
+  target_bucket = aws_s3_bucket.logs_access.id
+  target_prefix = "brokerone-dev-logs/"
+
+  depends_on = [aws_s3_bucket_policy.logs_access]
 }

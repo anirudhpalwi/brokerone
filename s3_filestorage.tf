@@ -38,26 +38,10 @@ resource "aws_s3_bucket_versioning" "filestorage" {
   }
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "filestorage" {
-  bucket = data.aws_s3_bucket.filestorage.id
-
-  rule {
-    id     = "expire-noncurrent-versions"
-    status = "Enabled"
-
-    filter {}
-
-    noncurrent_version_expiration {
-      noncurrent_days = 30
-    }
-
-    abort_incomplete_multipart_upload {
-      days_after_initiation = 7
-    }
-  }
-
-  depends_on = [aws_s3_bucket_versioning.filestorage]
-}
+# No lifecycle rules: AWS does not allow lifecycle configuration on a bucket
+# with MFA Delete (Scrut: "Bucket without MFA Delete"). Old versions are kept
+# until removed manually by the root user with MFA. MFA Delete itself is
+# enabled by the root user via CLI, not by Terraform.
 
 resource "aws_s3_bucket_logging" "filestorage" {
   bucket        = data.aws_s3_bucket.filestorage.id
