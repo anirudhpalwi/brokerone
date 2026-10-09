@@ -3,8 +3,21 @@ output "customer_url" {
   value       = "https://${var.brokerone_fqdn}"
 }
 
-output "elastic_ip" {
-  value = aws_eip.brokerone.public_ip
+output "ec2_private_ip" {
+  value = aws_instance.brokerone.private_ip
+}
+
+output "nat_public_ip" {
+  description = "Outbound IP of the app server (NAT gateway)"
+  value       = aws_eip.nat.public_ip
+}
+
+output "private_subnet_a_id" {
+  value = aws_subnet.private_a.id
+}
+
+output "private_subnet_b_id" {
+  value = aws_subnet.private_b.id
 }
 
 output "ec2_instance_id" {

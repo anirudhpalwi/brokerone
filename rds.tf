@@ -41,7 +41,7 @@ resource "aws_db_instance" "brokerone" {
   publicly_accessible = false
   # Multi-AZ standby in the second AZ (Scrut: "RDS instance single AZ"). Roughly doubles RDS cost.
   multi_az                = true
-  backup_retention_period = 7
+  backup_retention_period = 30
   skip_final_snapshot     = true
   deletion_protection     = false
   apply_immediately       = true

@@ -28,6 +28,18 @@ variable "public_subnet_b_cidr" {
   default     = "10.0.11.0/24"
 }
 
+variable "private_subnet_a_cidr" {
+  description = "Private app subnet A CIDR (EC2, no public IP)"
+  type        = string
+  default     = "10.0.20.0/24"
+}
+
+variable "private_subnet_b_cidr" {
+  description = "Private app subnet B CIDR"
+  type        = string
+  default     = "10.0.21.0/24"
+}
+
 variable "db_subnet_a_cidr" {
   description = "New private DB subnet A CIDR"
   type        = string

@@ -3,15 +3,20 @@
 resource "aws_instance" "brokerone" {
   ami                    = var.ami_id
   instance_type          = var.ec2_instance_type
-  subnet_id              = aws_subnet.public_a.id
+  subnet_id              = aws_subnet.private_a.id
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
-  # Public IP is a documented exception (Scrut: "Instance with a Public IP Address").
-  # There is no NAT gateway, so the instance needs it for outbound access
-  # (dnf/npm, SSM, CodeCommit). Inbound is limited to port 5192 from the ALB SG,
-  # with no SSH. Removing it requires a NAT gateway or VPC endpoints and
-  # replaces the instance.
-  associate_public_ip_address = true
+  # No public IP (Scrut: "Instance with a Public IP Address"). The instance runs
+  # in a private subnet and reaches the internet (dnf/npm, SSM, CodeCommit, SES)
+  # through the NAT gateway. Inbound is only port 5192 from the ALB SG; no SSH.
+  associate_public_ip_address = false
+
+  # Don't boot until the private subnet's NAT route exists; user_data needs internet.
+  depends_on = [
+    aws_nat_gateway.brokerone,
+    aws_route_table_association.private_a,
+    aws_network_acl.private,
+  ]
 
   root_block_device {
     volume_size = 20
@@ -33,7 +38,8 @@ resource "aws_instance" "brokerone" {
     grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
     dnf update -y
-    dnf install -y git curl wget unzip ruby postgresql15
+    # curl is already provided by curl-minimal on AL2023; installing "curl" conflicts with it
+    dnf install -y git wget unzip ruby postgresql15
 
     curl -fsSL https://rpm.nodesource.com/setup_24.x | bash -
     dnf install -y nodejs-2:24.21.0-1nodesource
@@ -42,6 +48,16 @@ resource "aws_instance" "brokerone" {
 
     systemctl enable amazon-ssm-agent || true
     systemctl start amazon-ssm-agent || true
+
+    # CodeDeploy agent (the deployment group finds this instance by its Application tag)
+    cd /tmp
+    wget -q https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
+    chmod +x ./install
+    ./install auto
+    systemctl enable codedeploy-agent || true
+
+    # CloudWatch agent; its config is restored by hand after a rebuild
+    dnf install -y amazon-cloudwatch-agent
 
     mkdir -p /opt/brokerone-dev/BrokerOne/brokerone
     mkdir -p /etc/brokerone
@@ -83,15 +99,4 @@ resource "aws_instance" "brokerone" {
   }
 }
 
-resource "aws_eip" "brokerone" {
-  domain = "vpc"
 
-  tags = {
-    Name = "brokerone-dev-eip"
-  }
-}
-
-resource "aws_eip_association" "brokerone" {
-  instance_id   = aws_instance.brokerone.id
-  allocation_id = aws_eip.brokerone.id
-}
