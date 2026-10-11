@@ -56,15 +56,51 @@ resource "aws_instance" "brokerone" {
     ./install auto
     systemctl enable codedeploy-agent || true
 
-    # CloudWatch agent; its config is restored by hand after a rebuild
-    dnf install -y amazon-cloudwatch-agent
-
     mkdir -p /opt/brokerone-dev/BrokerOne/brokerone
     mkdir -p /etc/brokerone
+    mkdir -p /var/log/brokerone
 
     chown -R ec2-user:ec2-user /opt/brokerone-dev
     chown root:ec2-user /etc/brokerone
     chmod 750 /etc/brokerone
+    chown ec2-user:ec2-user /var/log/brokerone
+
+    # Rotate the app log daily, keep 7 days (CloudWatch keeps 30)
+    cat >/etc/logrotate.d/brokerone <<'LOGROTATE'
+    /var/log/brokerone/app.log {
+      daily
+      rotate 7
+      compress
+      missingok
+      notifempty
+      copytruncate
+    }
+    LOGROTATE
+
+    # CloudWatch agent: ship the app log to /brokerone-dev/app, one stream per instance
+    dnf install -y amazon-cloudwatch-agent
+    mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+    cat >/opt/aws/amazon-cloudwatch-agent/etc/brokerone-cwagent.json <<'CWAGENT'
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/brokerone/app.log",
+                "log_group_name": "/brokerone-dev/app",
+                "log_stream_name": "{instance_id}",
+                "timestamp_format": "%Y-%m-%dT%H:%M:%S"
+              }
+            ]
+          }
+        }
+      }
+    }
+    CWAGENT
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+      -c file:/opt/aws/amazon-cloudwatch-agent/etc/brokerone-cwagent.json
+    systemctl enable amazon-cloudwatch-agent || true
 
     cat >/etc/systemd/system/brokerone.service <<'SERVICE'
     [Unit]
@@ -80,6 +116,9 @@ resource "aws_instance" "brokerone" {
     ExecStart=/usr/bin/npx next start -H 0.0.0.0 -p 5192
     Restart=always
     RestartSec=5
+    # App output goes to a file the CloudWatch agent ships (still viewable with tail -f)
+    StandardOutput=append:/var/log/brokerone/app.log
+    StandardError=append:/var/log/brokerone/app.log
 
     [Install]
     WantedBy=multi-user.target
