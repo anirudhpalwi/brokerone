@@ -45,11 +45,22 @@ resource "aws_security_group" "ec2" {
   }
 }
 
-resource "aws_vpc_security_group_egress_rule" "ec2_all_outbound" {
+resource "aws_vpc_security_group_egress_rule" "ec2_https_outbound" {
   security_group_id = aws_security_group.ec2.id
-  description       = "All outbound traffic"
-  ip_protocol       = "-1"
+  description       = "HTTPS to AWS APIs and package repos via NAT"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
   cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_egress_rule" "ec2_to_rds" {
+  security_group_id            = aws_security_group.ec2.id
+  description                  = "PostgreSQL to BrokerOne RDS"
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.rds.id
 }
 
 resource "aws_vpc_security_group_ingress_rule" "ec2_from_alb" {
@@ -80,9 +91,5 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_ec2" {
   referenced_security_group_id = aws_security_group.ec2.id
 }
 
-resource "aws_vpc_security_group_egress_rule" "rds_all_outbound" {
-  security_group_id = aws_security_group.rds.id
-  description       = "All outbound traffic"
-  ip_protocol       = "-1"
-  cidr_ipv4         = "0.0.0.0/0"
-}
+# No RDS egress rule: RDS only answers connections, and security groups are
+# stateful, so replies to the EC2 are allowed without one.

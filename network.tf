@@ -193,24 +193,7 @@ resource "aws_network_acl" "public" {
     from_port  = 80
     to_port    = 80
   }
-  # ALB to the app
-  ingress {
-    rule_no    = 120
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_a_cidr
-    from_port  = 5192
-    to_port    = 5192
-  }
-  ingress {
-    rule_no    = 130
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_b_cidr
-    from_port  = 5192
-    to_port    = 5192
-  }
-  # Replies to the EC2's outbound calls (npm, dnf, SSM, S3, SES, CodeCommit) and from RDS
+  # Replies to outbound calls forwarded by the NAT gateway, and from the app to the ALB
   ingress {
     rule_no    = 140
     protocol   = "tcp"
@@ -220,7 +203,7 @@ resource "aws_network_acl" "public" {
     to_port    = 65535
   }
 
-  # HTTPS and HTTP to AWS services and package sites
+  # HTTPS to AWS services and package sites
   egress {
     rule_no    = 100
     protocol   = "tcp"
@@ -229,49 +212,7 @@ resource "aws_network_acl" "public" {
     from_port  = 443
     to_port    = 443
   }
-  egress {
-    rule_no    = 110
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 80
-    to_port    = 80
-  }
-  # ALB to the app
-  egress {
-    rule_no    = 120
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_a_cidr
-    from_port  = 5192
-    to_port    = 5192
-  }
-  egress {
-    rule_no    = 130
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_b_cidr
-    from_port  = 5192
-    to_port    = 5192
-  }
-  # App to RDS
-  egress {
-    rule_no    = 140
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.db_subnet_a_cidr
-    from_port  = 5432
-    to_port    = 5432
-  }
-  egress {
-    rule_no    = 150
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.db_subnet_b_cidr
-    from_port  = 5432
-    to_port    = 5432
-  }
-  # Replies from the ALB to users and from the app to the ALB
+  # Replies from the ALB to users, and from the NAT gateway to the app
   egress {
     rule_no    = 160
     protocol   = "tcp"
@@ -297,8 +238,8 @@ resource "aws_network_acl" "public" {
     from_port  = 5192
     to_port    = 5192
   }
-  # NAT gateway traffic needs no extra rules: it arrives on 80/443 (ingress 100/110),
-  # leaves on 80/443 (egress 100/110), and replies use 1024-65535 (ingress 140, egress 160).
+  # NAT gateway traffic needs no extra rules: it arrives on 443 (ingress 100),
+  # leaves on 443 (egress 100), and replies use 1024-65535 (ingress 140, egress 160).
 
   tags = {
     Name = "brokerone-dev-public-nacl"
@@ -337,7 +278,7 @@ resource "aws_network_acl" "private" {
     to_port    = 65535
   }
 
-  # HTTPS and HTTP out through the NAT gateway
+  # HTTPS out through the NAT gateway
   egress {
     rule_no    = 100
     protocol   = "tcp"
@@ -345,14 +286,6 @@ resource "aws_network_acl" "private" {
     cidr_block = "0.0.0.0/0"
     from_port  = 443
     to_port    = 443
-  }
-  egress {
-    rule_no    = 110
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 80
-    to_port    = 80
   }
   # App to RDS
   egress {
@@ -371,12 +304,20 @@ resource "aws_network_acl" "private" {
     from_port  = 5432
     to_port    = 5432
   }
-  # Replies to the ALB
+  # Replies to the ALB (public subnets only)
   egress {
     rule_no    = 140
     protocol   = "tcp"
     action     = "allow"
-    cidr_block = "0.0.0.0/0"
+    cidr_block = var.public_subnet_a_cidr
+    from_port  = 1024
+    to_port    = 65535
+  }
+  egress {
+    rule_no    = 150
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = var.public_subnet_b_cidr
     from_port  = 1024
     to_port    = 65535
   }
@@ -390,40 +331,6 @@ resource "aws_network_acl" "private" {
 resource "aws_network_acl" "db" {
   vpc_id     = var.vpc_id
   subnet_ids = [aws_subnet.db_a.id, aws_subnet.db_b.id]
-
-  ingress {
-    rule_no    = 100
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_a_cidr
-    from_port  = 5432
-    to_port    = 5432
-  }
-  ingress {
-    rule_no    = 110
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_b_cidr
-    from_port  = 5432
-    to_port    = 5432
-  }
-
-  egress {
-    rule_no    = 100
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_a_cidr
-    from_port  = 1024
-    to_port    = 65535
-  }
-  egress {
-    rule_no    = 110
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = var.public_subnet_b_cidr
-    from_port  = 1024
-    to_port    = 65535
-  }
 
   # App in the private subnets
   ingress {
